@@ -1,0 +1,20 @@
+name: stardist1
+channels:
+  - anaconda
+  - cpape
+  - conda-forge
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.7
+  - cudatoolkit=10.1.*
+  - cudnn=7.6.*
+  - nifty
+  - elf
+  - natsort
+  - packaging
+  - tqdm
+  - pip
+  - pip:
+    - tensorflow==2.3.*
+    - stardist
