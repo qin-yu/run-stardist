@@ -3,8 +3,8 @@ import logging
 import argparse
 from logging import Logger
 
-import yaml
 import h5py
+import tifffile
 import numpy as np
 import nifty.tools as nt
 from pathlib import Path
@@ -61,19 +61,24 @@ if __name__ == '__main__':
     # Prediction:
     for dataset_idx, path_file in enumerate(paths_file_dataset):
         logger.info(f"Predicting dataset {dataset_idx}, {len(paths_file_dataset)} datasets in total:")
-        with h5py.File(path_file, 'r') as f:
-            dset = f[config_data['name']]
-            if len(dset.shape) not in [2, 3]:
-                raise ValueError(f"Image has shape {dset.shape}, expecting a 2D or 3D image!")
-            image_raw = dset[:].squeeze()
+
+        if config_data['format'] == 'hdf5':
+            with h5py.File(path_file, 'r') as f:
+                dset = f[config_data['name']]
+                if len(dset.shape) not in [2, 3]:
+                    raise ValueError(f"Image has shape {dset.shape}, expecting a 2D or 3D image!")
+                image_raw = dset[:].squeeze()
+                image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
+                if 'voxel_size_um' in dset.attrs and config.get('rescale'):
+                    voxel_size_train = np.array(config['rescale']['voxel_size'])
+                    voxel_size = np.array(dset.attrs['voxel_size_um'])
+                    image_raw_dtype = image_raw.dtype
+                    rescale_ratio = voxel_size / voxel_size_train
+                    image_raw = zoom(image_raw, rescale_ratio)
+                    assert image_raw_dtype == image_raw.dtype, "Bug in rescaling"
+        elif config_data['format'] == 'tiff':
+            image_raw = tifffile.imread(path_file).squeeze()
             image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
-            if 'voxel_size_um' in dset.attrs and config.get('rescale'):
-                voxel_size_train = np.array(config['rescale']['voxel_size'])
-                voxel_size = np.array(dset.attrs['voxel_size_um'])
-                image_raw_dtype = image_raw.dtype
-                rescale_ratio = voxel_size / voxel_size_train
-                image_raw = zoom(image_raw, rescale_ratio)
-                assert image_raw_dtype == image_raw.dtype, "Bug in rescaling"
 
         config_patch_size = config_data['slice']['patch_size']
         patch_size = [min(i, j) for i, j in zip(config_patch_size, image_raw.shape)]
@@ -136,7 +141,10 @@ if __name__ == '__main__':
 
         path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.h5'
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
-        with h5py.File(path_out_file, 'w') as f:
-            f.create_dataset(name="segmentation",
-                             data=segmentation.astype(output_dtype),
-                             compression='gzip')
+        if config_data['format'] == 'hdf5':
+            with h5py.File(path_out_file, 'w') as f:
+                f.create_dataset(name="segmentation",
+                                 data=segmentation.astype(output_dtype),
+                                 compression='gzip')
+        elif config_data['format'] == 'tiff':
+            tifffile.imwrite(path_out_file, segmentation, dtype=output_dtype)

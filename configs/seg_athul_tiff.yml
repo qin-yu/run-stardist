@@ -1,0 +1,26 @@
+data:
+  format: "tiff"
+  path:
+    - "/home/qinyu/Datasets/AVijayan2021Ovules/"
+  slice:
+    patch_size: [ 32, 96, 96 ]  # as large as possible
+    halo_size: [ 16, 48, 48 ]
+  output_dir: "/home/qinyu/Outputs/AVijayan2021Ovules/"
+  output_dtype: "uint16"
+
+normalisation:
+  axis_norm: [ 0, 1, 2 ]
+
+tensorflow:
+  threading:
+    inter_op_parallelism_threads: 2
+    intra_op_parallelism_threads: 16
+
+stardist:
+  model_dir: "/home/qinyu/Models/AVijayan2021Ovules/"
+  model_name: "athul"
+  model_type: "StarDist3D"
+
+stitching:
+  n_threads: 32
+  overlap_threshold: 0.5
