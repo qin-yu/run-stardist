@@ -1,4 +1,4 @@
-name: stardist1
+name: stardist
 channels:
   - anaconda
   - cpape

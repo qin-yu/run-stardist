@@ -50,19 +50,19 @@ if __name__ == '__main__':
     model = load_model(config['stardist'])
 
     # List Datasets:
-    logger.info("Scanning datasets")
+    logger.info("Scanning datasets, please make sure file extensions are in lower case.")
     config_data = config['data']
     paths_dataset = config_data['path']
     if not isinstance(paths_dataset, list):
         raise TypeError("config['data']['path'] has to be a list of file/dir path(s)!")
-    paths_file_dataset = utils.get_dataset_file_paths(paths_dataset)
+    paths_file_dataset = utils.get_dataset_file_paths(paths_dataset, config_data['format'])
     logger.info(f"Found the following files: \n\t{paths_file_dataset}")
 
     # Prediction:
     for dataset_idx, path_file in enumerate(paths_file_dataset):
         logger.info(f"Predicting dataset {dataset_idx}, {len(paths_file_dataset)} datasets in total:")
 
-        if config_data['format'] == 'hdf5':
+        if utils.is_hdf5(config_data['format']):
             with h5py.File(path_file, 'r') as f:
                 dset = f[config_data['name']]
                 if len(dset.shape) not in [2, 3]:
@@ -76,7 +76,7 @@ if __name__ == '__main__':
                     rescale_ratio = voxel_size / voxel_size_train
                     image_raw = zoom(image_raw, rescale_ratio)
                     assert image_raw_dtype == image_raw.dtype, "Bug in rescaling"
-        elif config_data['format'] == 'tiff':
+        elif utils.is_tiff(config_data['format']):
             image_raw = tifffile.imread(path_file).squeeze()
             image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
 
@@ -139,12 +139,13 @@ if __name__ == '__main__':
                 f"User-specified type {config_data['output_dtype']} max exceeded, using uint32: {number_of_unique_labels} unique labels")
             output_dtype = np.uint32
 
-        path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.h5'
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
         if config_data['format'] == 'hdf5':
+            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.h5'
             with h5py.File(path_out_file, 'w') as f:
                 f.create_dataset(name="segmentation",
                                  data=segmentation.astype(output_dtype),
                                  compression='gzip')
         elif config_data['format'] == 'tiff':
+            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.tif'
             tifffile.imwrite(path_out_file, segmentation, dtype=output_dtype)

@@ -7,6 +7,9 @@ from glob import glob
 from natsort import natsorted
 
 
+EXT_HDF5 = ['hdf5', 'h5']
+EXT_TIFF = ['tiff', 'tif']
+
 def get_gpu_info():
     logger = logging.getLogger(__name__)
     logger.info(f"Using GPU:{os.environ['CUDA_VISIBLE_DEVICES']} on {os.uname().nodename}")
@@ -25,6 +28,16 @@ def file_path(string):
         return string
     else:
         raise FileNotFoundError(string)
+
+
+def is_hdf5(string):
+    s = string.lower()
+    return s in EXT_HDF5
+
+
+def is_tiff(string):
+    s = string.lower()
+    return s in EXT_TIFF
 
 
 def parse_arguments():
@@ -62,14 +75,19 @@ def set_tf_op_parallelism_threads(config):
     logger.debug(f"intra_op_parallelism_threads = {tf.config.threading.get_intra_op_parallelism_threads()}")
 
 
-def get_dataset_file_paths(paths_dataset):
+def get_dataset_file_paths(paths_dataset, format='hdf5'):
     paths_file_dataset = []
     for path_dataset in paths_dataset:
         if os.path.isfile(path_dataset):
             paths_file_dataset.append(path_dataset)
         elif os.path.isdir(path_dataset):
-            for file_extension in ['h5', 'hdf5']:  # `glob` ignores multiple `/` and only support shell-style wildcards.
-                paths_file_dataset += natsorted(glob(path_dataset + "/*." + file_extension))
+            if is_hdf5(format):
+                for file_extension in EXT_HDF5:  # `glob` ignores multiple `/` and only support shell-style wildcards.
+                    paths_file_dataset += natsorted(glob(path_dataset + "/*." + file_extension))
+            elif is_tiff(format):
+                for file_extension in EXT_TIFF:
+                    paths_file_dataset += natsorted(glob(path_dataset + "/*." + file_extension))
+
     return paths_file_dataset
 
 
