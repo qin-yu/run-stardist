@@ -62,6 +62,9 @@ def load_config(path_config):
 def set_tf_op_parallelism_threads(config):
     import tensorflow as tf
     logger = logging.getLogger(__name__)
+    # gpu_devices = tf.config.experimental.list_physical_devices("GPU")
+    # for device in gpu_devices:
+    #     tf.config.experimental.set_memory_growth(device, True)
     try:
         config_tensorflow = config['tensorflow']
         config_threading = config_tensorflow['threading']

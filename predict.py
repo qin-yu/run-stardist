@@ -136,7 +136,8 @@ if __name__ == '__main__':
             assert number_of_unique_labels <= np.iinfo(np.dtype(np.uint32)).max + 1, \
                 "This shouldn't happen because labels are uint32 before merging and relabeling"
             logger.warning(
-                f"User-specified type {config_data['output_dtype']} max exceeded, using uint32: {number_of_unique_labels} unique labels")
+                f"User-specified type {config_data['output_dtype']} max exceeded, using uint32: "
+                f"{number_of_unique_labels} unique labels")
             output_dtype = np.uint32
 
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
@@ -148,4 +149,4 @@ if __name__ == '__main__':
                                  compression='gzip')
         elif config_data['format'] == 'tiff':
             path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.tif'
-            tifffile.imwrite(path_out_file, segmentation, dtype=output_dtype)
+            tifffile.imwrite(path_out_file, segmentation)
