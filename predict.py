@@ -127,18 +127,9 @@ if __name__ == '__main__':
         segmentation = merge_segmentation(image_lab, node_labels, block_offsets, blocking, n_threads)
         segmentation, _, _ = relabel_sequential(segmentation)  # 30x faster, len(forward_map) != len(inverse_map)
 
-        number_of_unique_labels = segmentation.max() + 1  # this should include bg thus +1 here, i.e. len(inverse_map)
-        if number_of_unique_labels <= np.iinfo(np.dtype(config_data['output_dtype'])).max + 1:
-            logger.info(
-                f"User-specified type {config_data['output_dtype']} is used: {number_of_unique_labels} unique labels")
-            output_dtype = np.dtype(config_data['output_dtype'])
-        else:
-            assert number_of_unique_labels <= np.iinfo(np.dtype(np.uint32)).max + 1, \
-                "This shouldn't happen because labels are uint32 before merging and relabeling"
-            logger.warning(
-                f"User-specified type {config_data['output_dtype']} max exceeded, using uint32: "
-                f"{number_of_unique_labels} unique labels")
-            output_dtype = np.uint32
+        # TODO: here I used to assume segmentation datatype is integer and use np.iinfo(), 
+        #       but for some applications float is required so.. needs update
+        output_dtype = np.dtype(config_data['output_dtype'])
 
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
         if config_data['format'] == 'hdf5':
