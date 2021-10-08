@@ -114,6 +114,12 @@ if __name__ == '__main__':
                                                                          this_block.innerBlockLocal.end))
             image_lab[this_slice] = block_with_halo_sequence[block_id][this_slice_local]
 
+        Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
+        if config_data['format'] == 'hdf5' and config.get('save_tiled'):
+            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_tiled.h5'
+            with h5py.File(path_out_file, 'w') as f:
+                f.create_dataset(name='unstitched', data=image_lab.astype("uint16"), compression='gzip')
+
         # Stitching
         n_threads = config['stitching']['n_threads']
         overlap_threshold = config['stitching']['overlap_threshold']
@@ -127,8 +133,6 @@ if __name__ == '__main__':
         segmentation = merge_segmentation(image_lab, node_labels, block_offsets, blocking, n_threads)
         segmentation, _, _ = relabel_sequential(segmentation)  # 30x faster, len(forward_map) != len(inverse_map)
 
-        # TODO: here I used to assume segmentation datatype is integer and use np.iinfo(), 
-        #       but for some applications float is required so.. needs update
         output_dtype = np.dtype(config_data['output_dtype'])
 
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
@@ -140,4 +144,4 @@ if __name__ == '__main__':
                                  compression='gzip')
         elif config_data['format'] == 'tiff':
             path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.tif'
-            tifffile.imwrite(path_out_file, segmentation)
+            tifffile.imwrite(path_out_file, data=segmentation, imagej=True)
