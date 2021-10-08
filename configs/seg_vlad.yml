@@ -1,12 +1,12 @@
 data:
   format: "hdf5"
   path:
-    - "/home/qinyu/Datasets/AVijayan2021Ovules/"
+    - "/g/kreshuk/yu/Datasets/VBondarenko2021Embryo/test_GT/"
   name: "raw"
   slice:
     patch_size: [32, 96, 96] # as large as possible
     halo_size: [16, 48, 48]
-  output_dir: "/home/qinyu/Outputs/AVijayan2021Ovules/"
+  output_dir: "/g/kreshuk/yu/Outputs/VBondarenko2021Embryo/test_GT/"
   output_dtype: "uint16"
 
 normalisation:
@@ -18,7 +18,7 @@ tensorflow:
     intra_op_parallelism_threads: 16
 
 stardist:
-  model_dir: "/home/qinyu/Models/AVijayan2021Ovules/"
+  model_dir: "/g/kreshuk/yu/ovule-nuclei-segmentation/models"
   model_name: "athul"
   model_type: "StarDist3D"
 

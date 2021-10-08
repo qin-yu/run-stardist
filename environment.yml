@@ -10,11 +10,11 @@ dependencies:
   - cudatoolkit=11.2.*
   - cudnn=8.1.*
   - nifty
-  - elf  # still one needs to download and use the latest version by adding to $PYTHONPATH
+  - elf # still one needs to download and use the latest version by adding to $PYTHONPATH
   - natsort
   - packaging
   - tqdm
   - pip
   - pip:
-    - tensorflow==2.6.*
-    - stardist
+      - tensorflow==2.6.*
+      - stardist
