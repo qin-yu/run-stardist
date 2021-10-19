@@ -5,7 +5,7 @@ data:
   slice:
     patch_size: [32, 96, 96] # as large as possible
     halo_size: [16, 48, 48]
-  output_dir: "/g/kreshuk/yu/Outputs/AVijayan2021Ovules/test_tiff/"
+  output_dir: "/g/kreshuk/yu/Outputs/AVijayan2021Ovules/test_tiff_prob/"
   output_dtype: "float32"
 
 normalisation:

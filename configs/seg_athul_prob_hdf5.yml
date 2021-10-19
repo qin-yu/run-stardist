@@ -1,11 +1,12 @@
 data:
-  format: "tiff"
+  format: "hdf5"
   path:
-    - "/g/kreshuk/yu/Datasets/AVijayan2021Ovules/test_tiff/"
+    - "/g/kreshuk/yu/Datasets/AVijayan2021Ovules/test_hdf5/"
+  name: "raw"
   slice:
     patch_size: [32, 96, 96] # as large as possible
     halo_size: [16, 48, 48]
-  output_dir: "/g/kreshuk/yu/Outputs/AVijayan2021Ovules/test_tiff_prob/"
+  output_dir: "/g/kreshuk/yu/Outputs/AVijayan2021Ovules/test_hdf5_prob/"
   output_dtype: "float32"
 
 normalisation:

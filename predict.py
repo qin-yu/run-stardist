@@ -97,24 +97,13 @@ if __name__ == '__main__':
             this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.outerBlock.begin,
                                                                    this_block.outerBlock.end))
             img = image_raw[this_slice]
-            print(img.shape)  # Check raw shape (48, 144, 144)
             labels, details = model.predict_instances(img)
-            print(labels.shape)  # Check instance segmentation shape (48, 144, 144)
             labels = labels.astype(np.uint32)
             labels[labels > 0] = labels[labels > 0] + number_of_instances
             number_of_instances += len(details['dist'])  # exclude background i.e. len(np.unique(labels)) - 1
             block_with_halo_sequence.append(labels)  # StarDist prediction gives various dtype, e.g. uint16/int32
-            print(img.shape)  # Check if raw modified, nope (48, 144, 144)
+
             probmap, _ = model.predict(img)
-            print(probmap.shape)  # Check probability map shape, (24, 36, 36)
-
-            # Check if the probability map corresponds exactly to the raw input
-            viewer = napari.Viewer()
-            viewer.add_image(img)
-            viewer.add_image(zoom(probmap, [2., 4., 4.]))
-            napari.run()
-
-            exit()
             probability_map_sequence.append(probmap)
 
         if number_of_instances > np.iinfo(np.uint32).max:
