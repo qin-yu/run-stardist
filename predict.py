@@ -2,6 +2,7 @@ import os
 import logging
 import argparse
 from logging import Logger
+import napari
 
 import h5py
 import tifffile
@@ -89,23 +90,41 @@ if __name__ == '__main__':
 
         number_of_instances = 0
         block_with_halo_sequence = []
+        probability_map_sequence = []
         blocking = nt.blocking([0, 0, 0], image_raw.shape, patch_size)
         for block_id in trange(blocking.numberOfBlocks):
             this_block = blocking.getBlockWithHalo(block_id, halo)
             this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.outerBlock.begin,
                                                                    this_block.outerBlock.end))
             img = image_raw[this_slice]
+            print(img.shape)  # Check raw shape (48, 144, 144)
             labels, details = model.predict_instances(img)
+            print(labels.shape)  # Check instance segmentation shape (48, 144, 144)
             labels = labels.astype(np.uint32)
             labels[labels > 0] = labels[labels > 0] + number_of_instances
             number_of_instances += len(details['dist'])  # exclude background i.e. len(np.unique(labels)) - 1
             block_with_halo_sequence.append(labels)  # StarDist prediction gives various dtype, e.g. uint16/int32
+            print(img.shape)  # Check if raw modified, nope (48, 144, 144)
+            probmap, _ = model.predict(img)
+            print(probmap.shape)  # Check probability map shape, (24, 36, 36)
+
+            # Check if the probability map corresponds exactly to the raw input
+            viewer = napari.Viewer()
+            viewer.add_image(img)
+            viewer.add_image(zoom(probmap, [2., 4., 4.]))
+            napari.run()
+
+            exit()
+            probability_map_sequence.append(probmap)
+
         if number_of_instances > np.iinfo(np.uint32).max:
             # this is put here to avoid checking at every iteration, may waste time if dataset is huge
             raise OverflowError(
                 f"Number of pre-merged instances {number_of_instances} is greater than the maximum of np.uint32.")
 
         image_lab = np.zeros(image_raw.shape, dtype=np.uint32)
+        image_prob = np.zeros(image_raw.shape, dtype=np.float32)
+
         for block_id in trange(blocking.numberOfBlocks):
             this_block = blocking.getBlockWithHalo(block_id, halo)
             this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlock.begin,
@@ -113,6 +132,7 @@ if __name__ == '__main__':
             this_slice_local = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlockLocal.begin,
                                                                          this_block.innerBlockLocal.end))
             image_lab[this_slice] = block_with_halo_sequence[block_id][this_slice_local]
+            image_prob[this_slice] = zoom(probability_map_sequence[block_id], [2., 4., 4.])[this_slice_local]
 
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
         if config_data['format'] == 'hdf5' and config.get('save_tiled'):
@@ -139,9 +159,10 @@ if __name__ == '__main__':
         if config_data['format'] == 'hdf5':
             path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.h5'
             with h5py.File(path_out_file, 'w') as f:
-                f.create_dataset(name="segmentation",
-                                 data=segmentation.astype(output_dtype),
-                                 compression='gzip')
+                f.create_dataset(name="segmentation", data=segmentation.astype(output_dtype), compression='gzip')
+                f.create_dataset(name="probability",  data=image_prob,                        compression='gzip')
         elif config_data['format'] == 'tiff':
             path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.tif'
-            tifffile.imwrite(path_out_file, data=segmentation, imagej=True)
+            tifffile.imwrite(path_out_file, data=segmentation.astype(output_dtype), imagej=True)
+            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_prob.tif'
+            tifffile.imwrite(path_out_file, data=image_prob,                        imagej=True)

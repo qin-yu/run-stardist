@@ -1,0 +1,26 @@
+data:
+  format: "tiff"
+  path:
+    - "/g/kreshuk/yu/Datasets/AVijayan2021Ovules/test_tiff/"
+  slice:
+    patch_size: [32, 96, 96] # as large as possible
+    halo_size: [16, 48, 48]
+  output_dir: "/g/kreshuk/yu/Outputs/AVijayan2021Ovules/test_tiff_prob/"
+  output_dtype: "float32"
+
+normalisation:
+  axis_norm: [0, 1, 2]
+
+tensorflow:
+  threading:
+    inter_op_parallelism_threads: 2
+    intra_op_parallelism_threads: 16
+
+stardist:
+  model_dir: "/g/kreshuk/yu/ovule-nuclei-segmentation/models/"
+  model_name: "athul"
+  model_type: "StarDist3D"
+
+stitching:
+  n_threads: 32
+  overlap_threshold: 0.5
