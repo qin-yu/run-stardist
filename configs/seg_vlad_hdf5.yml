@@ -6,7 +6,7 @@ data:
   slice:
     patch_size: [50, 96, 96] # as large as possible
     halo_size: [25, 48, 48]
-  output_dir: "/g/kreshuk/yu/Outputs/VBondarenko2021Embryo/test_finetune_244/"
+  output_dir: "/g/kreshuk/yu/Outputs/VBondarenko2021Embryo/test_finetune/"
   output_dtype: "float32"
 
 normalisation:
@@ -19,7 +19,7 @@ tensorflow:
 
 stardist:
   model_dir: "/g/kreshuk/yu/Models/"
-  model_name: "vlad_244"
+  model_name: "vlad"
   model_type: "StarDist3D"
 
 stitching:
