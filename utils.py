@@ -3,9 +3,11 @@ import logging
 import os
 import h5py
 import yaml
+import numpy as np
 from glob import glob
 from natsort import natsorted
 
+from stardist import calculate_extents
 
 EXT_HDF5 = ['hdf5', 'h5']
 EXT_TIFF = ['tiff', 'tif']
@@ -103,3 +105,13 @@ def read_h5_voxel_size(file_path, name):
             return ds.attrs['element_size_um']
         else:
             return None
+
+
+def compute_grid(file_path, dataset_name='label'):
+    with h5py.File(file_path, 'r') as f:
+        Y = f[dataset_name][:]
+    extents = calculate_extents(Y)
+    anisotropy = tuple(np.max(extents) / extents)
+    print('empirical anisotropy of labeled objects = %s' % str(anisotropy))
+    grid = tuple(1 if a > 1.5 else 2 for a in anisotropy)
+    return grid
