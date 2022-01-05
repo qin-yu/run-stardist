@@ -1,7 +1,6 @@
 data:
   format: "hdf5"
   path:
-    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/train/"
     - "/g/kreshuk/yu/Datasets/TMody2021Ovules/val/"
   name: "raw"
   slice:
@@ -20,7 +19,7 @@ tensorflow:
 
 stardist:
   model_dir: "/g/kreshuk/yu/Models/TMody2021Ovules/"
-  model_name: "20211209gpu6"
+  model_name: "20220104overfit"
   model_type: "StarDist3D"
 
 stitching:

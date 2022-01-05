@@ -16,7 +16,7 @@ axis_norm: [0, 1, 2]
 
 stardist:
   model_dir: "/g/kreshuk/yu/Models/TMody2021Ovules"
-  model_name: "20211209gpu6"
+  model_name: "20211209slurm"
   n_rays: 96
   grid: [2, 4, 4]
   use_gpu: False
