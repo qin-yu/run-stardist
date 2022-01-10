@@ -6,7 +6,8 @@ from tqdm import tqdm
 from pprint import pprint
 from natsort import natsorted
 from pathlib import Path
-from skimage.transform import rescale
+# from skimage.transform import rescale
+from scipy.ndimage import zoom
 
 from utils import compute_grid
 
@@ -15,8 +16,9 @@ def combine_tiff_to_h5(output_folder_path, raw_path, lab_path, file_id):
     raw = tifffile.imread(raw_path)
     lab = tifffile.imread(lab_path)
     with h5py.File(output_folder_path + f"{file_id}.h5", 'w') as f:
-        f.create_dataset("raw", data=rescale(raw, (1., .5, .5)), compression='gzip')
-        f.create_dataset("label", data=rescale(lab, (1., .5, .5)), compression='gzip')  # FIXME: label should be int
+        f.create_dataset("raw", data=zoom(raw, (1., .5, .5)), compression='gzip')
+        # f.create_dataset("label", data=rescale(lab, (1., .5, .5), preserve_range=True), compression='gzip')
+        f.create_dataset("label", data=zoom(lab, (1., .5, .5)), compression='gzip')
 
 
 def convert_all_tiff(output_folder_path, raw_file_list, lab_file_list):
