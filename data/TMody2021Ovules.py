@@ -2,6 +2,7 @@ import os
 import glob
 import h5py
 import tifffile
+import numpy as np
 from tqdm import tqdm
 from pprint import pprint
 from natsort import natsorted
@@ -16,9 +17,8 @@ def combine_tiff_to_h5(output_folder_path, raw_path, lab_path, file_id):
     raw = tifffile.imread(raw_path)
     lab = tifffile.imread(lab_path)
     with h5py.File(output_folder_path + f"{file_id}.h5", 'w') as f:
-        f.create_dataset("raw", data=zoom(raw, (1., .5, .5)), compression='gzip')
-        # f.create_dataset("label", data=rescale(lab, (1., .5, .5), preserve_range=True), compression='gzip')
-        f.create_dataset("label", data=zoom(lab, (1., .5, .5)), compression='gzip')
+        f.create_dataset("raw",   data=zoom(raw, (1., .5, .5), order=1), compression='gzip')
+        f.create_dataset("label", data=zoom(np.flip(lab, axis=1), (1., .5, .5), order=0), compression='gzip')
 
 
 def convert_all_tiff(output_folder_path, raw_file_list, lab_file_list):

@@ -1,7 +1,7 @@
 data:
   path:
-    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/train/"
-    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/val"
+    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/train_xyds2/"
+    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/val_xyds2"
   slice:
     patch_size: [96, 192, 192] # as large as possible
     stride_sizes: [48, 96, 96]
@@ -16,7 +16,7 @@ axis_norm: [0, 1, 2]
 
 stardist:
   model_dir: "/g/kreshuk/yu/Models/TMody2021Ovules"
-  model_name: "20220110gpu7"
+  model_name: "20220113gpu7"
   n_rays: 96
   grid: [1, 2, 2]
   use_gpu: False
