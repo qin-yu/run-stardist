@@ -1,8 +1,8 @@
 data:
   format: "hdf5"
   path:
-    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/train/"
-    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/val/"
+    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/train_xyds2/"
+    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/val_xyds2/"
   name: "raw"
   slice:
     patch_size: [48, 96, 96]
@@ -20,8 +20,9 @@ tensorflow:
 
 stardist:
   model_dir: "/g/kreshuk/yu/Models/TMody2021Ovules/"
-  model_name: "20211209gpu6"
+  model_name: "20220113gpu7"
   model_type: "StarDist3D"
+  grid: [1, 2, 2]
 
 stitching:
   n_threads: 32
