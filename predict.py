@@ -49,6 +49,7 @@ if __name__ == '__main__':
 
     # Load Model:
     model = load_model(config['stardist'])
+    grid = config['stardist']['grid']
 
     # List Datasets:
     logger.info("Scanning datasets, please make sure file extensions are in lower case.")
@@ -121,7 +122,7 @@ if __name__ == '__main__':
             this_slice_local = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlockLocal.begin,
                                                                          this_block.innerBlockLocal.end))
             image_lab[this_slice] = block_with_halo_sequence[block_id][this_slice_local]
-            image_prob[this_slice] = zoom(probability_map_sequence[block_id], [1., 2., 2.])[this_slice_local]
+            image_prob[this_slice] = zoom(probability_map_sequence[block_id], grid)[this_slice_local]
 
         Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
         if config_data['format'] == 'hdf5' and config.get('save_tiled'):
