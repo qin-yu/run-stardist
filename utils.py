@@ -9,8 +9,9 @@ from natsort import natsorted
 
 from stardist import calculate_extents
 
-EXT_HDF5 = ['hdf5', 'h5']
-EXT_TIFF = ['tiff', 'tif']
+EXT_HDF5 = ['hdf5', 'h5', '.hdf5', '.h5']
+EXT_TIFF = ['tiff', 'tif', '.tiff', '.tif']
+
 
 def get_gpu_info():
     logger = logging.getLogger(__name__)
@@ -40,6 +41,25 @@ def is_hdf5(string):
 def is_tiff(string):
     s = string.lower()
     return s in EXT_TIFF
+
+
+def tiff_path(string):
+    if file_path(string):  # File must exist
+        _, file_extension = os.path.splitext(string)
+        print(file_extension)
+        if is_tiff(file_extension):
+            return True
+    raise FileNotFoundError("Not a TIFF file.")
+
+
+def hdf5_path(string):
+    if file_path(string):  # File must exist
+        _, file_extension = os.path.splitext(string)
+        print(file_extension)
+
+        if is_hdf5(file_extension):
+            return True
+    raise FileNotFoundError("Not a HDF5 file.")
 
 
 def parse_arguments():
