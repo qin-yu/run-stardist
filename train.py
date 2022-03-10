@@ -1,10 +1,7 @@
 import logging
-import argparse
 import os
 import h5py
 import numpy as np
-import yaml
-import tensorflow as tf
 from glob import glob
 from natsort import natsorted
 from stardist import calculate_extents, gputools_available, Rays_GoldenSpiral
@@ -12,18 +9,6 @@ from stardist.models import Config3D, StarDist3D
 from csbdeep.utils import normalize
 
 import utils
-
-
-def prepare_data():
-    pass
-
-
-def read_configs():
-    pass
-
-
-def train_model():
-    pass
 
 
 def _gen_indices(i, k, s):
@@ -91,25 +76,7 @@ def augmenter(x, y):
     return x, y
 
 
-if __name__ == '__main__':
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s',
-                        datefmt='%m/%d/%Y %I:%M:%S %p')
-
-    # Parse Arguments:
-    args = utils.parse_arguments()
-
-    # Load Config:
-    config = utils.load_config(args.config_file)
-
-    # TensorFlow Settings:
-    utils.set_tf_op_parallelism_threads(config)
-
-    # List Datasets:
-    logger.info("Scanning datasets")
-    paths_dataset = config['data']['path']
-    assert isinstance(paths_dataset, list)
+def list_datasets(logger, paths_dataset):
     paths_file_dataset = []
     for path_dataset in paths_dataset:
         if os.path.isfile(path_dataset):
@@ -120,11 +87,10 @@ if __name__ == '__main__':
     logger.info(f"Found the following files: \n\t{paths_file_dataset}")
     if paths_file_dataset == []:
         raise ValueError("Check your path for dataset, no dataset found.")
+    return paths_file_dataset
 
-    # Load Datasets:
-    logger.info("Loading datasets")
-    patch_size = config['data']['slice']['patch_size']
-    stride_sizes = config['data']['slice']['patch_size']
+
+def load_datasets(logger, config, paths_file_dataset, patch_size, stride_sizes):
     patches_raw_all = []
     patches_lab_all = []
     extents_all = []
@@ -161,24 +127,60 @@ if __name__ == '__main__':
             patches_raw_all.append(np.stack(patches_raw, axis=0))
             patches_lab_all.append(np.stack(patches_lab, axis=0))
         logger.debug("Success")
+    return patches_raw_all, patches_lab_all, extents_all
 
-    # Compute overall statistics
+
+def train_val_split(logger, X, Y):
+    rng = np.random.RandomState(7)  # TODO: User input
+    ind = rng.permutation(len(X))
+    n_val = max(1, int(round(0.15 * len(ind))))
+    ind_train, ind_val = ind[:-n_val], ind[-n_val:]
+    X_val, Y_val = [X[i] for i in ind_val], [Y[i] for i in ind_val]
+    X_trn, Y_trn = [X[i] for i in ind_train], [Y[i] for i in ind_train]
+    logger.info(f'\n\t- patches:    {len(X):3d}\n\t- training:   {len(X_trn):3d}\n\t- validation: {len(X_val):3d}')
+    return X_val, Y_val, X_trn, Y_trn
+
+
+if __name__ == '__main__':
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+    # Parse Arguments:
+    args = utils.parse_arguments()
+
+    # Load Config:
+    config = utils.load_config(args.config_file)
+
+    # TensorFlow Settings:
+    utils.set_tf_op_parallelism_threads(config)
+
+    # List Datasets:
+    logger.info("Scanning datasets")
+    paths_dataset = config['data']['path']
+    assert isinstance(paths_dataset, list)
+    paths_file_dataset = list_datasets(logger, paths_dataset)
+
+    # Load Datasets:
+    logger.info("Loading datasets")
+    patch_size = config['data']['slice']['patch_size']
+    stride_sizes = config['data']['slice']['patch_size']
+    patches_raw_all, patches_lab_all, extents_all = load_datasets(logger, config, paths_file_dataset, patch_size, stride_sizes)
+
+    # Compute Overall Statistics:
     extents = np.mean(extents_all, axis=0)
-    logger.info(f"Extents is: {extents}")
     anisotropy = tuple(np.max(extents) / extents)
-    logger.info('Empirical anisotropy of labeled objects = %s' % str(anisotropy))
-
     config_stardist = config['stardist']
     grid = config_stardist.get('grid', tuple(1 if a > 1.5 else 2 for a in anisotropy))
-    logger.info(f"Predict on subsampled grid for increased efficiency and larger field of view: {grid}")
-    rays = Rays_GoldenSpiral(config_stardist['n_rays'],
-                             anisotropy=anisotropy)  # Use rays on a Fibonacci lattice adjusted for measured
-    # anisotropy of the training data
-
+    rays = Rays_GoldenSpiral(config_stardist['n_rays'], anisotropy=anisotropy)  # Rays on a Fibonacci lattice adjusted for anisotropy
     use_gpu = config_stardist['use_gpu'] and gputools_available()  # TODO: Restrict mory usage if gputools available
-    logger.info(
-        f"{'NOT ' if not use_gpu else ''}Using OpenCL-based computations for data generator during training (requires "
-        f"'gputools')")
+
+    logger.info(f"Extents is: {extents}")
+    logger.info(f'Empirical anisotropy of labeled objects = {anisotropy}')
+    logger.info(f"Predict on subsampled grid for increased efficiency and larger field of view: {grid}")
+    logger.info(f"{'NOT ' if not use_gpu else ''}Using OpenCL-based computations for data generator during training (requires 'gputools')")
+
+    # Build Model:
     model = StarDist3D(config=Config3D(
         rays=rays,
         grid=grid,
@@ -189,14 +191,20 @@ if __name__ == '__main__':
         train_batch_size=config_stardist['train_batch_size'],
     ), name=config_stardist['model_name'], basedir=config_stardist['model_dir'])
 
+    # Check Field of View:
     median_size = np.median(extents_all, axis=0)
     fov = np.array(model._axes_tile_overlap('ZYX'))
+
     logger.info(f"median object size:      {median_size}")
     logger.info(f"network field of view :  {fov}")
     if any(median_size > fov):
         logger.warning("WARNING: median object size larger than field of view of the neural network.")
+    else:
+        logger.info("Median object size smaller than field of view of the neural network.")
 
-    # Normalisation from any data type to 0 ~ 1
+    # TODO: Normalisation from any data type to 0 ~ 1
+
+    # Converting Datasets into Sequence
     logger.info("Converting datasets into raw/label patch sequences")
     patches_raw_all = np.vstack(patches_raw_all)
     patches_lab_all = np.vstack(patches_lab_all)
@@ -206,15 +214,10 @@ if __name__ == '__main__':
 
     # Train/val split
     logger.info("Splitting patches into train/validation sets")
-    rng = np.random.RandomState(7)
-    ind = rng.permutation(len(X))
-    n_val = max(1, int(round(0.15 * len(ind))))
-    ind_train, ind_val = ind[:-n_val], ind[-n_val:]
-    X_val, Y_val = [X[i] for i in ind_val], [Y[i] for i in ind_val]
-    X_trn, Y_trn = [X[i] for i in ind_train], [Y[i] for i in ind_train]
-    logger.info(f'\n\t- patches:    {len(X):3d}\n\t- training:   {len(X_trn):3d}\n\t- validation: {len(X_val):3d}')
+    X_val, Y_val, X_trn, Y_trn = train_val_split(logger, X, Y)
 
     # Training
+    logger.info("Training starting")
     model.train(X_trn, Y_trn, validation_data=(X_val, Y_val), augmenter=augmenter)
     logger.info("TRAIN SUCCESS!")
     model.optimize_thresholds(X_val, Y_val)

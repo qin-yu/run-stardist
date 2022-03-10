@@ -16,7 +16,7 @@ axis_norm: [0, 1, 2]
 
 stardist:
   model_dir: "/g/kreshuk/yu/ovule-nuclei-segmentation/models"
-  model_name: "athul"
+  model_name: "athul_202203101412"
   n_rays: 96
   grid: [2, 4, 4]
   use_gpu: False
