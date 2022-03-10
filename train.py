@@ -76,20 +76,6 @@ def augmenter(x, y):
     return x, y
 
 
-def list_datasets(logger, paths_dataset):
-    paths_file_dataset = []
-    for path_dataset in paths_dataset:
-        if os.path.isfile(path_dataset):
-            paths_file_dataset.append(path_dataset)
-        elif os.path.isdir(path_dataset):
-            for file_extension in ['h5', 'hdf5']:  # `glob` ignores multiple `/` and only support shell-style wildcards.
-                paths_file_dataset += natsorted(glob(path_dataset + "/*." + file_extension))
-    logger.info(f"Found the following files: \n\t{paths_file_dataset}")
-    if paths_file_dataset == []:
-        raise ValueError("Check your path for dataset, no dataset found.")
-    return paths_file_dataset
-
-
 def load_datasets(logger, config, paths_file_dataset, patch_size, stride_sizes):
     patches_raw_all = []
     patches_lab_all = []
@@ -145,6 +131,7 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+    logger.info("Running train.py")
 
     # Parse Arguments:
     args = utils.parse_arguments()
@@ -156,10 +143,13 @@ if __name__ == '__main__':
     utils.set_tf_op_parallelism_threads(config)
 
     # List Datasets:
-    logger.info("Scanning datasets")
+    logger.info("Scanning datasets, please make sure file extensions are in lower case.")
     paths_dataset = config['data']['path']
     assert isinstance(paths_dataset, list)
-    paths_file_dataset = list_datasets(logger, paths_dataset)
+    paths_file_dataset = utils.get_dataset_file_paths(paths_dataset)
+    logger.info(f"Found the following files: \n\t{paths_file_dataset}")
+    if paths_file_dataset == []:
+        raise ValueError("Check your path for dataset, no dataset found.")
 
     # Load Datasets:
     logger.info("Loading datasets")

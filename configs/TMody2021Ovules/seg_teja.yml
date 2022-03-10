@@ -1,0 +1,28 @@
+data:
+  format: "hdf5"
+  path:
+    - "/g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/"
+  name: "raw"
+  slice:
+    patch_size: [48, 96, 96]
+    halo_size: [24, 48, 48]
+  output_dir: "/g/kreshuk/yu/Outputs/TMody2021Ovules/try_refactor/"
+  output_dtype: "float32"
+
+normalisation:
+  axis_norm: [0, 1, 2]
+
+tensorflow:
+  threading:
+    inter_op_parallelism_threads: 2
+    intra_op_parallelism_threads: 16
+
+stardist:
+  model_dir: "/g/kreshuk/yu/Models/TMody2021Ovules/"
+  model_name: "20220113gpu7"
+  model_type: "StarDist3D"
+  grid: [1, 2, 2]
+
+stitching:
+  n_threads: 32
+  overlap_threshold: 0.5

@@ -30,11 +30,140 @@ def load_model(config_stardist):
     return Model(None, name=config_stardist['model_name'], basedir=config_stardist['model_dir'])
 
 
+def _predict(logger, config, model, grid, config_data, path_file):
+    # Load dataset:
+    image_raw = load_dataset(logger, config, config_data, path_file)
+
+    # Check dataset size:
+    config_patch_size = config_data['slice']['patch_size']
+    patch_size = [min(i, j) for i, j in zip(config_patch_size, image_raw.shape)]
+    if patch_size != config_patch_size:
+        logger.info(f"Patch size {config_patch_size} specified in config is too big for dataset {path_file}")
+
+    # Predict by blocks:
+    halo = config_data['slice']['halo_size']
+    blocking = nt.blocking([0, 0, 0], image_raw.shape, patch_size)
+    number_of_instances, block_with_halo_sequence, probability_map_sequence = block_and_predict(model, image_raw, halo, blocking)
+
+    # Check datatype capacity:
+    if number_of_instances > np.iinfo(np.uint32).max:
+        # this is put here to avoid checking at every iteration, may waste time if dataset is huge
+        raise OverflowError(f"Number of pre-merged instances, {number_of_instances}, is greater than the maximum of np.uint32.")
+
+    image_lab, image_prob = tile_blocks(grid, image_raw.shape, halo, blocking, block_with_halo_sequence, probability_map_sequence)
+
+    # Save unstitched tiled blocks:
+    Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
+    save_unstitched_tiles(config_data['format'], config_data['output_dir'], path_file, image_lab)
+
+    # Stitching
+    n_threads = config['stitching']['n_threads']
+    overlap_threshold = config['stitching']['overlap_threshold']
+    blocking = nt.blocking([0, 0, 0], image_lab.shape, patch_size)
+    segmentation = stitch(halo, blocking, block_with_halo_sequence, image_lab, n_threads, overlap_threshold)
+
+    # Save stitched blocks:
+    output_dtype = np.dtype(config_data['output_dtype'])
+    save_stitched_image(config_data['format'], config_data['output_dir'], path_file, image_prob, segmentation, output_dtype)
+
+
+def save_stitched_image(dset_format, output_dir, path_file, image_prob, segmentation, output_dtype):
+    if dset_format == 'hdf5':
+        path_out_file = output_dir + os.path.splitext(os.path.basename(path_file))[0] + '_merged.h5'
+        with h5py.File(path_out_file, 'w') as f:
+            f.create_dataset(name="segmentation", data=segmentation.astype(output_dtype), compression='gzip')
+            f.create_dataset(name="probability",  data=image_prob,                        compression='gzip')
+    elif dset_format == 'tiff':
+        path_out_file = output_dir + os.path.splitext(os.path.basename(path_file))[0] + '_merged.tif'
+        tifffile.imwrite(path_out_file, data=segmentation.astype(output_dtype), imagej=True)
+        path_out_file = output_dir + os.path.splitext(os.path.basename(path_file))[0] + '_prob.tif'
+        tifffile.imwrite(path_out_file, data=image_prob,                        imagej=True)
+
+
+def stitch(halo, blocking, block_with_halo_sequence, image_lab, n_threads, overlap_threshold):
+    overlap_dimensions, overlap_dict = compute_overlaps(block_with_halo_sequence, blocking, halo, n_threads)
+    node_labels, block_offsets = stitch_segmentations_by_overlap(block_with_halo_sequence,
+                                                                 overlap_dimensions,
+                                                                 overlap_dict,
+                                                                 overlap_threshold,
+                                                                 n_threads)
+    segmentation = merge_segmentation(image_lab, node_labels, block_offsets, blocking, n_threads)
+    segmentation, _, _ = relabel_sequential(segmentation)  # 30x faster, len(forward_map) != len(inverse_map)
+    return segmentation
+
+
+def save_unstitched_tiles(dset_format, output_dir, path_file, image_lab):
+    if dset_format == 'hdf5' and config.get('save_tiled'):
+        path_out_file = output_dir + os.path.splitext(os.path.basename(path_file))[0] + '_tiled.h5'
+        with h5py.File(path_out_file, 'w') as f:
+            f.create_dataset(name='unstitched', data=image_lab.astype("uint16"), compression='gzip')
+
+
+def tile_blocks(grid, image_shape, halo, blocking, block_with_halo_sequence, probability_map_sequence):
+    image_lab = np.zeros(image_shape, dtype=np.uint32)
+    image_prob = np.zeros(image_shape, dtype=np.float32)
+
+    for block_id in trange(blocking.numberOfBlocks):
+        this_block = blocking.getBlockWithHalo(block_id, halo)
+        this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlock.begin,
+                                                               this_block.innerBlock.end))
+        this_slice_local = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlockLocal.begin,
+                                                                     this_block.innerBlockLocal.end))
+        image_lab[this_slice] = block_with_halo_sequence[block_id][this_slice_local]
+        image_prob[this_slice] = zoom(probability_map_sequence[block_id], grid)[this_slice_local]
+    return image_lab, image_prob
+
+
+def block_and_predict(model, image_raw, halo, blocking):
+    number_of_instances = 0
+    block_with_halo_sequence = []
+    probability_map_sequence = []
+    for block_id in trange(blocking.numberOfBlocks):
+        this_block = blocking.getBlockWithHalo(block_id, halo)
+        this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.outerBlock.begin,
+                                                               this_block.outerBlock.end))
+        img = image_raw[this_slice]
+        labels, details = model.predict_instances(img)
+        labels = labels.astype(np.uint32)
+        labels[labels > 0] = labels[labels > 0] + number_of_instances
+        number_of_instances += len(details['dist'])  # exclude background i.e. len(np.unique(labels)) - 1
+        block_with_halo_sequence.append(labels)  # StarDist prediction gives various dtype, e.g. uint16/int32
+
+        probmap, _ = model.predict(img)
+        probability_map_sequence.append(probmap)
+    return number_of_instances, block_with_halo_sequence, probability_map_sequence
+
+
+def load_dataset(logger, config, config_data, path_file):
+    dset_format = config_data['format']
+    if utils.is_hdf5(dset_format):
+        # Load HDF5 dataset:
+        with h5py.File(path_file, 'r') as f:
+            dset = f[config_data['name']]
+            if len(dset.shape) not in [2, 3]:
+                raise ValueError(f"Image has shape {dset.shape}, expecting a 2D or 3D image!")
+            image_raw = dset[:].squeeze()
+            image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
+            if 'voxel_size_um' in dset.attrs and config.get('rescale'):
+                voxel_size_train = np.array(config['rescale']['voxel_size'])
+                voxel_size = np.array(dset.attrs['voxel_size_um'])
+                image_raw_dtype = image_raw.dtype
+                rescale_ratio = voxel_size / voxel_size_train
+                image_raw = zoom(image_raw, rescale_ratio)
+                assert image_raw_dtype == image_raw.dtype, "Bug in rescaling"
+            else:
+                logger.warn("No voxel information provided.")
+    elif utils.is_tiff(dset_format):
+        # Load TIFF dataset:
+        image_raw = tifffile.imread(path_file).squeeze()
+        image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
+    return image_raw
+
+
 if __name__ == '__main__':
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
-    logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s',
-                        datefmt='%m/%d/%Y %I:%M:%S %p')
+    logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
     logger.info("Running predict.py")
     utils.get_gpu_info()
 
@@ -64,95 +193,4 @@ if __name__ == '__main__':
     for dataset_idx, path_file in enumerate(paths_file_dataset):
         logger.info(f"Predicting dataset {dataset_idx}, {len(paths_file_dataset)} datasets in total:")
 
-        if utils.is_hdf5(config_data['format']):
-            with h5py.File(path_file, 'r') as f:
-                dset = f[config_data['name']]
-                if len(dset.shape) not in [2, 3]:
-                    raise ValueError(f"Image has shape {dset.shape}, expecting a 2D or 3D image!")
-                image_raw = dset[:].squeeze()
-                image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
-                if 'voxel_size_um' in dset.attrs and config.get('rescale'):
-                    voxel_size_train = np.array(config['rescale']['voxel_size'])
-                    voxel_size = np.array(dset.attrs['voxel_size_um'])
-                    image_raw_dtype = image_raw.dtype
-                    rescale_ratio = voxel_size / voxel_size_train
-                    image_raw = zoom(image_raw, rescale_ratio)
-                    assert image_raw_dtype == image_raw.dtype, "Bug in rescaling"
-        elif utils.is_tiff(config_data['format']):
-            image_raw = tifffile.imread(path_file).squeeze()
-            image_raw = normalize(image_raw, 1, 99.8, axis=config['normalisation']['axis_norm'])
-
-        config_patch_size = config_data['slice']['patch_size']
-        patch_size = [min(i, j) for i, j in zip(config_patch_size, image_raw.shape)]
-        if patch_size != config_patch_size:
-            logger.info(f"Patch size {config_patch_size} specified in config is too big for dataset {path_file}")
-
-        halo = config_data['slice']['halo_size']
-
-        number_of_instances = 0
-        block_with_halo_sequence = []
-        probability_map_sequence = []
-        blocking = nt.blocking([0, 0, 0], image_raw.shape, patch_size)
-        for block_id in trange(blocking.numberOfBlocks):
-            this_block = blocking.getBlockWithHalo(block_id, halo)
-            this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.outerBlock.begin,
-                                                                   this_block.outerBlock.end))
-            img = image_raw[this_slice]
-            labels, details = model.predict_instances(img)
-            labels = labels.astype(np.uint32)
-            labels[labels > 0] = labels[labels > 0] + number_of_instances
-            number_of_instances += len(details['dist'])  # exclude background i.e. len(np.unique(labels)) - 1
-            block_with_halo_sequence.append(labels)  # StarDist prediction gives various dtype, e.g. uint16/int32
-
-            probmap, _ = model.predict(img)
-            probability_map_sequence.append(probmap)
-
-        if number_of_instances > np.iinfo(np.uint32).max:
-            # this is put here to avoid checking at every iteration, may waste time if dataset is huge
-            raise OverflowError(
-                f"Number of pre-merged instances {number_of_instances} is greater than the maximum of np.uint32.")
-
-        image_lab = np.zeros(image_raw.shape, dtype=np.uint32)
-        image_prob = np.zeros(image_raw.shape, dtype=np.float32)
-
-        for block_id in trange(blocking.numberOfBlocks):
-            this_block = blocking.getBlockWithHalo(block_id, halo)
-            this_slice = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlock.begin,
-                                                                   this_block.innerBlock.end))
-            this_slice_local = tuple(slice(beg, end) for beg, end in zip(this_block.innerBlockLocal.begin,
-                                                                         this_block.innerBlockLocal.end))
-            image_lab[this_slice] = block_with_halo_sequence[block_id][this_slice_local]
-            image_prob[this_slice] = zoom(probability_map_sequence[block_id], grid)[this_slice_local]
-
-        Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
-        if config_data['format'] == 'hdf5' and config.get('save_tiled'):
-            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_tiled.h5'
-            with h5py.File(path_out_file, 'w') as f:
-                f.create_dataset(name='unstitched', data=image_lab.astype("uint16"), compression='gzip')
-
-        # Stitching
-        n_threads = config['stitching']['n_threads']
-        overlap_threshold = config['stitching']['overlap_threshold']
-        blocking = nt.blocking([0, 0, 0], image_lab.shape, patch_size)
-        overlap_dimensions, overlap_dict = compute_overlaps(block_with_halo_sequence, blocking, halo, n_threads)
-        node_labels, block_offsets = stitch_segmentations_by_overlap(block_with_halo_sequence,
-                                                                     overlap_dimensions,
-                                                                     overlap_dict,
-                                                                     overlap_threshold,
-                                                                     n_threads)
-        segmentation = merge_segmentation(image_lab, node_labels, block_offsets, blocking, n_threads)
-        segmentation, _, _ = relabel_sequential(segmentation)  # 30x faster, len(forward_map) != len(inverse_map)
-
-        output_dtype = np.dtype(config_data['output_dtype'])
-
-        Path(config_data['output_dir']).mkdir(parents=True, exist_ok=True)
-        if config_data['format'] == 'hdf5':
-            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.h5'
-            with h5py.File(path_out_file, 'w') as f:
-                f.create_dataset(name="segmentation", data=segmentation.astype(output_dtype), compression='gzip')
-                f.create_dataset(name="probability",  data=image_prob,                        compression='gzip')
-        elif config_data['format'] == 'tiff':
-            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_merged.tif'
-            tifffile.imwrite(path_out_file, data=segmentation.astype(output_dtype), imagej=True)
-            path_out_file = config_data['output_dir'] + os.path.splitext(os.path.basename(path_file))[0] + '_prob.tif'
-            tifffile.imwrite(path_out_file, data=image_prob,                        imagej=True)
+        _predict(logger, config, model, grid, config_data, path_file)
