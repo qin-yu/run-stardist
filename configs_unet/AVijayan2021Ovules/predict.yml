@@ -1,0 +1,57 @@
+# path to the checkpoint file containing the model
+model_path: '/g/kreshuk/yu/Models/TMody2021Ovules/3dunet_202206222102/best_checkpoint.pytorch'
+model:
+  name: UNet3D
+  # number of input channels to the model
+  in_channels: 1
+  # number of output channels
+  out_channels: 2
+  # determines the order of operators in a single layer (crg - Conv3d+ReLU+GroupNorm)
+  layer_order: gcr
+  # initial number of feature maps
+  f_maps: 32
+  # number of groups in the groupnorm
+  num_groups: 8
+  # apply element-wise nn.Sigmoid after the final 1x1x1 convolution, otherwise apply nn.Softmax
+  final_sigmoid: true
+  is_segmentation: true
+# predictor configuration
+predictor:
+  # standard in memory predictor
+  name: 'StandardPredictor'
+  # padding to be removed from each axis in order to avoid checkerboard artifacts
+  patch_halo: [8, 16, 16]
+# specify the test datasets
+loaders:
+  # batch dimension; if number of GPUs is N > 1, then a batch_size of N * batch_size will automatically be taken for DataParallel
+  batch_size: 2
+  # mirror pad the raw data for sharper prediction near the boundaries of the volume
+  mirror_padding: [16, 32, 32]
+  # path to the raw data within the H5
+  raw_internal_path: raw
+  # how many subprocesses to use for data loading
+  num_workers: 8
+  test:
+    # paths to the test datasets; if a given path is a directory all H5 files ('*.h5', '*.hdf', '*.hdf5', '*.hd5')
+    # inside this this directory will be included as well (non-recursively)
+    file_paths:
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1707.h5
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1709.h5
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1710.h5
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1713.h5
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1714.h5
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1732.h5
+      - /g/kreshuk/yu/Datasets/TMody2021Ovules/test_xyds2/1734.h5
+
+    # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
+    slice_builder:
+      name: SliceBuilder
+      patch_shape: [80, 160, 160]
+      stride_shape: [40, 80, 80]
+      skip_shape_check: true
+
+    transformer:
+        raw:
+          - name: Standardize
+          - name: ToTensor
+            expand_dims: true
